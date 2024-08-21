@@ -214,8 +214,12 @@ async def track_engagement():
                         f"FIWB you went full Degod mode on this!"
                     )
                     # Send raid completion message with a 15-second delay before deletion
-                    await send_message_with_deletion(ongoing_raid['message'].chat.id, alert_message, 15,
-                                                     parse_mode="Markdown")
+                    await send_message_with_banner(
+                        chat_id=ongoing_raid['message'].chat.id,
+                        text=alert_message,
+                        delay=10,
+                        parse_mode="Markdown"
+                    )
 
                     ongoing_raid = None
 
