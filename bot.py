@@ -45,7 +45,16 @@ async def send_message_with_banner(chat_id: int, text: str, delay: int, parse_mo
 
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
-    await send_message_with_banner(message.chat.id, "Welcome to D.RaidBot! Use /raid to start raiding X posts.", 60)
+    help_text = (
+        "Welcome to D.RaidBot! Here are the commands you can use:\n\n"
+        "/start or /help - Display this help message.\n\n"
+        "/raid <post link> <likes> <retweets> <replies> <bookmarks> - Start a new raid on a specific tweet. "
+        "You must provide the link to the tweet and the goals for likes, retweets, replies, and bookmarks.\n\n"
+        "/cancel - Cancel the current ongoing raid. If there is a queued raid, it will start automatically.\n\n"
+        "/queue - Display the status of the current raid and the list of queued raids.\n\n"
+        "/status - Check the current status of the ongoing raid, including the progress towards the raid goals.\n\n"
+    )
+    await send_message_with_banner(message.chat.id, help_text, 60)
 
 @dp.message_handler(commands=['raid'])
 async def raid_command(message: types.Message):
@@ -129,7 +138,7 @@ async def queue_status(message: types.Message):
         if raid_queue:
             status += "🟡 Queued Raids:\n"
             for i, raid in enumerate(raid_queue, 1):
-                status += f"{i}. [Link]({raid['post_link']}) - Goals: 👍 {raid['likes_goal']}, 🔁 {raid['retweets_goal']}, 💬 {raid['replies_goal']}, 🔖 {raid['bookmarks_goal']}\n"
+                status += f"{i}. [Link]({raid['post_link']}) - Goals: ❤️ {raid['likes_goal']}, 🔁 {raid['retweets_goal']}, 💬 {raid['replies_goal']}, 🔖 {raid['bookmarks_goal']}\n"
 
         await send_message_with_banner(message.chat.id, status, 20, parse_mode="Markdown")
 
