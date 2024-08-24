@@ -155,6 +155,7 @@ async def cancel_raid(message: types.Message):
     if ongoing_raid:
         stop_engagement_task = True  # Signal to stop engagement tracking
         await bot.send_message(message.chat.id, "The current raid has been canceled.")
+        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
         ongoing_raid = None
 
         if raid_queue:
@@ -264,7 +265,6 @@ async def raid_status(message: types.Message):
 
 async def track_engagement():
     global ongoing_raid, stop_engagement_task, raid_start_time
-    previous_message_id = None
 
     while True:
         if ongoing_raid:
@@ -317,6 +317,7 @@ async def track_engagement():
                         reply_to_message_id=ongoing_raid['pinned_message_id']  # Reply to the last pinned message
                     )
 
+                    await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
                     ongoing_raid = None
 
                     if raid_queue:
@@ -430,6 +431,19 @@ async def send_full_raid_update(message: types.Message, raid_data, initial=False
                                             parse_mode="Markdown")
         else:
             return await bot.send_message(chat_id=message.chat.id, text=interaction_text, parse_mode="Markdown")
+
+
+async def cleanup_tracking_messages(chat_id: int, delay: int):
+    """Deletes the pinned tracking message after a specified delay."""
+    await asyncio.sleep(delay)
+    try:
+        chat = await bot.get_chat(chat_id)
+        pinned_message = chat.pinned_message
+        if pinned_message:
+            await bot.delete_message(chat_id, pinned_message.message_id)
+    except Exception as e:
+        print(f"Error during cleanup of tracking messages: {str(e)}")
+
 
 
 async def main():
