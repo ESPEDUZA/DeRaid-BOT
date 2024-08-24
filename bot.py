@@ -255,18 +255,18 @@ async def queue_status_handler(message: types.Message):
     else:
         status = "*RAID QUEUE*\n\n"
         if ongoing_raid:
-            status += f"Current Raid: [Link]({ongoing_raid['post_link']}) "
+            status += f"0. [Tweet]({ongoing_raid['post_link']}) "
             status += f" {ongoing_raid['likes']}"
             status += f" {ongoing_raid['retweets']}"
             status += f" {ongoing_raid['replies']} "
-            status += f" {ongoing_raid['bookmarks']} \n\n"
+            status += f" {ongoing_raid['bookmarks']}"
         else:
             status += "No ongoing raid.\n\n"
 
         if queue_enabled and raid_queue:
-            status += "Queued Raids:\n"
+            status += "\n"
             for i, raid in enumerate(raid_queue, 1):
-                status += f"{i}. [Link]({raid['post_link']}) - Goals: {raid['likes_goal']} {raid['retweets_goal']} {raid['replies_goal']} {raid['bookmarks_goal']}\n"
+                status += f"{i}. [Tweet]({raid['post_link']}) {raid['likes_goal']} {raid['retweets_goal']} {raid['replies_goal']} {raid['bookmarks_goal']}\n"
 
         await send_message_with_deletion(message.chat.id, status, 20, parse_mode="Markdown")
 
