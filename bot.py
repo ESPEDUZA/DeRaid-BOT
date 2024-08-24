@@ -253,23 +253,14 @@ async def queue_status_handler(message: types.Message):
     if not ongoing_raid and not raid_queue:
         await send_message_with_deletion(message.chat.id, "No ongoing or queued raids at the moment.", 20)
     else:
-        status = "*RAID QUEUE*\n\n"
-        if ongoing_raid:
-            status += f"0. [Tweet]({ongoing_raid['post_link']}) "
-            status += f" {ongoing_raid['likes']}"
-            status += f" {ongoing_raid['retweets']}"
-            status += f" {ongoing_raid['replies']} "
-            status += f" {ongoing_raid['bookmarks']}"
-        else:
-            status += "No ongoing raid.\n\n"
-
+        status = "*UPCOMING RAIDS*\n\n"
         if queue_enabled and raid_queue:
             status += "\n"
             for i, raid in enumerate(raid_queue, 1):
                 status += f"{i}. [Tweet]({raid['post_link']}) {raid['likes_goal']} {raid['retweets_goal']} {raid['replies_goal']} {raid['bookmarks_goal']}\n"
-
+        else:
+            status += "No upcoming raid.\n\n"
         await send_message_with_deletion(message.chat.id, status, 20, parse_mode="Markdown")
-
 
 @dp.message_handler(commands=['status'])
 async def raid_status(message: types.Message):
