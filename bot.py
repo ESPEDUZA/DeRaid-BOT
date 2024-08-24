@@ -1,11 +1,14 @@
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineQuery, InputTextMessageContent, InlineQueryResultArticle
+from aiogram.dispatcher.filters import CommandStart
+from aiogram.utils.exceptions import Unauthorized
 from collections import deque
 import tweepy
 from dotenv import load_dotenv
 from aiohttp import ServerDisconnectedError
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,6 +27,7 @@ raid_queue = deque()  # Using deque for efficient queue management
 ongoing_raid = None
 stop_engagement_task = False  # Flag to stop engagement tracking
 raid_start_time = None  # To track the start time of the raid
+queue_enabled = False  # Flag to enable/disable queue system
 
 BANNER_IMAGE_PATH = "2024-08-23 10.58.48.jpg"  # Update this with your actual image path or URL
 
@@ -68,22 +72,47 @@ async def send_message_with_deletion(chat_id: int, text: str, delay: int, parse_
     await bot.delete_message(chat_id=chat_id, message_id=message.message_id)
 
 
+async def is_admin(message: types.Message):
+    """Check if the user is an admin."""
+    chat_member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    return chat_member.is_chat_admin()
+
+
+async def admin_only(message: types.Message, handler):
+    """Allow only group admins to use this command."""
+    if await is_admin(message):
+        await handler(message)
+    else:
+        await send_message_with_deletion(message.chat.id, "This command is only available to group admins.", 10)
+
+
 @dp.message_handler(commands=['start', 'help'])
 async def send_welcome(message: types.Message):
+    await admin_only(message, send_welcome_handler)
+
+
+async def send_welcome_handler(message: types.Message):
     help_text = (
         "Welcome to D.RaidBot! Here are the commands you can use:\n\n"
         "/start or /help - Display this help message.\n\n"
         "/raid <post link> <likes> <retweets> <replies> <bookmarks> - Start a new raid on a specific tweet. "
         "You must provide the link to the tweet and the goals for likes, retweets, replies, and bookmarks.\n\n"
-        "/cancel - Cancel the current ongoing raid. If there is a queued raid, it will start automatically.\n\n"
+        "/cancel - Cancel the current ongoing raid.\n\n"
+        "/cancelall - Cancel all ongoing and queued raids.\n\n"
+        "/queueon - Enable the raid queue system.\n\n"
+        "/queueoff - Disable the raid queue system.\n\n"
         "/queue - Display the status of the current raid and the list of queued raids.\n\n"
-        "/status - Check the current status of the ongoing raid, including the progress towards the raid goals.\n\n"
+        "/status - Check the current status of the ongoing raid.\n\n"
     )
     await send_message_with_deletion(message.chat.id, help_text, 60)
 
 
 @dp.message_handler(commands=['raid'])
 async def raid_command(message: types.Message):
+    await admin_only(message, raid_command_handler)
+
+
+async def raid_command_handler(message: types.Message):
     global ongoing_raid, stop_engagement_task, raid_start_time
     args = message.text.split()
 
@@ -108,15 +137,18 @@ async def raid_command(message: types.Message):
         current_bookmarks = metrics.get('bookmark_count', 0)
 
         if ongoing_raid:
-            raid_queue.append({
-                "post_link": post_link,
-                "likes_goal": new_likes_goal,
-                "retweets_goal": new_retweets_goal,
-                "replies_goal": new_replies_goal,
-                "bookmarks_goal": new_bookmarks_goal,
-                "message": message  # Store the message object for use when this raid starts
-            })
-            await bot.send_message(message.chat.id, "A raid is already ongoing. Your raid has been queued.")
+            if queue_enabled:
+                raid_queue.append({
+                    "post_link": post_link,
+                    "likes_goal": new_likes_goal,
+                    "retweets_goal": new_retweets_goal,
+                    "replies_goal": new_replies_goal,
+                    "bookmarks_goal": new_bookmarks_goal,
+                    "message": message  # Store the message object for use when this raid starts
+                })
+                await bot.send_message(message.chat.id, "A raid is already ongoing. Your raid has been queued.")
+            else:
+                await bot.send_message(message.chat.id, "A raid is already ongoing. Queueing is currently disabled.")
         else:
             stop_engagement_task = False  # Reset the flag for a new raid
             raid_start_time = datetime.utcnow()  # Start tracking the time for the raid
@@ -151,6 +183,10 @@ async def raid_command(message: types.Message):
 
 @dp.message_handler(commands=['cancel'])
 async def cancel_raid(message: types.Message):
+    await admin_only(message, cancel_raid_handler)
+
+
+async def cancel_raid_handler(message: types.Message):
     global ongoing_raid, stop_engagement_task
     if ongoing_raid:
         stop_engagement_task = True  # Signal to stop engagement tracking
@@ -158,7 +194,7 @@ async def cancel_raid(message: types.Message):
         await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
         ongoing_raid = None
 
-        if raid_queue:
+        if queue_enabled and raid_queue:
             next_raid = raid_queue.popleft()  # Use popleft() to efficiently pop from the deque
             stop_engagement_task = False  # Reset the flag for the next raid
             ongoing_raid = {
@@ -186,32 +222,61 @@ async def cancel_raid(message: types.Message):
         await bot.send_message(message.chat.id, "No ongoing raid to cancel.")
 
 
+@dp.message_handler(commands=['cancelall'])
+async def cancel_all_raids(message: types.Message):
+    await admin_only(message, cancel_all_raids_handler)
+
+
+async def cancel_all_raids_handler(message: types.Message):
+    global ongoing_raid, stop_engagement_task, raid_queue
+
+    # Cancel the ongoing raid if there is one
+    if ongoing_raid:
+        stop_engagement_task = True
+        await bot.send_message(message.chat.id, "All raids have been canceled.")
+        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
+        ongoing_raid = None
+
+    # Clear the queue
+    raid_queue.clear()
+
+    await bot.send_message(message.chat.id, "The raid queue has been cleared.")
+
+
 @dp.message_handler(commands=['queue'])
 async def queue_status(message: types.Message):
+    await admin_only(message, queue_status_handler)
+
+
+async def queue_status_handler(message: types.Message):
     global ongoing_raid, raid_queue
     if not ongoing_raid and not raid_queue:
         await send_message_with_deletion(message.chat.id, "No ongoing or queued raids at the moment.", 20)
     else:
-        status = "📝 *Raid Queue Status*\n\n"
+        status = "*RAID QUEUE*\n\n"
         if ongoing_raid:
-            status += f"🔴 Current Raid: [Link]({ongoing_raid['post_link']})\n"
-            status += f"❤️ {ongoing_raid['likes']} of {ongoing_raid['initial_likes'] + ongoing_raid['likes_goal']}   "
-            status += f"🔁 {ongoing_raid['retweets']} of {ongoing_raid['initial_retweets'] + ongoing_raid['retweets_goal']}   "
-            status += f"💬 {ongoing_raid['replies']} of {ongoing_raid['initial_replies'] + ongoing_raid['replies_goal']}   "
-            status += f"🔖 {ongoing_raid['bookmarks']} of {ongoing_raid['initial_bookmarks'] + ongoing_raid['bookmarks_goal']}\n\n"
+            status += f"Current Raid: [Link]({ongoing_raid['post_link']}) "
+            status += f" {ongoing_raid['likes']}"
+            status += f" {ongoing_raid['retweets']}"
+            status += f" {ongoing_raid['replies']} "
+            status += f" {ongoing_raid['bookmarks']} \n\n"
         else:
             status += "No ongoing raid.\n\n"
 
-        if raid_queue:
-            status += "🟡 Queued Raids:\n"
+        if queue_enabled and raid_queue:
+            status += "Queued Raids:\n"
             for i, raid in enumerate(raid_queue, 1):
-                status += f"{i}. [Link]({raid['post_link']}) - Goals: ❤️ {raid['likes_goal']}, 🔁 {raid['retweets_goal']}, 💬 {raid['replies_goal']}, 🔖 {raid['bookmarks_goal']}\n"
+                status += f"{i}. [Link]({raid['post_link']}) - Goals: {raid['likes_goal']} {raid['retweets_goal']} {raid['replies_goal']} {raid['bookmarks_goal']}\n"
 
         await send_message_with_deletion(message.chat.id, status, 20, parse_mode="Markdown")
 
 
 @dp.message_handler(commands=['status'])
 async def raid_status(message: types.Message):
+    await admin_only(message, raid_status_handler)
+
+
+async def raid_status_handler(message: types.Message):
     global ongoing_raid
     if not ongoing_raid:
         await send_message_with_deletion(message.chat.id, "No ongoing raid at the moment.", 60)
@@ -263,6 +328,50 @@ async def raid_status(message: types.Message):
         await send_message_with_deletion(message.chat.id, f"Unexpected error: {str(e)}", 60)
 
 
+@dp.message_handler(commands=['queueon'])
+async def enable_queue(message: types.Message):
+    await admin_only(message, enable_queue_handler)
+
+
+async def enable_queue_handler(message: types.Message):
+    global queue_enabled
+    queue_enabled = True
+    await bot.send_message(message.chat.id, "Raid queueing has been enabled.")
+
+
+@dp.message_handler(commands=['queueoff'])
+async def disable_queue(message: types.Message):
+    await admin_only(message, disable_queue_handler)
+
+
+async def disable_queue_handler(message: types.Message):
+    global queue_enabled
+    queue_enabled = False
+    await bot.send_message(message.chat.id, "Raid queueing has been disabled.")
+
+
+@dp.inline_handler()
+async def inline_query_handler(inline_query: InlineQuery):
+    query = inline_query.query.lower()
+
+    commands = [
+        "queueon", "queueoff", "queue", "cancel", "cancelall", "raid", "status"
+    ]
+    results = []
+
+    for cmd in commands:
+        if cmd.startswith(query):
+            results.append(
+                InlineQueryResultArticle(
+                    id=cmd,
+                    title=f"/{cmd}",
+                    input_message_content=InputTextMessageContent(f"/{cmd}")
+                )
+            )
+
+    await bot.answer_inline_query(inline_query.id, results)
+
+
 async def track_engagement():
     global ongoing_raid, stop_engagement_task, raid_start_time
 
@@ -295,32 +404,18 @@ async def track_engagement():
                 if stop_engagement_task:
                     return
 
-                # Determine the color for each metric
-                likes_color = get_color_for_completion(likes_percentage)
-                retweets_color = get_color_for_completion(retweets_percentage)
-                replies_color = get_color_for_completion(replies_percentage)
-                bookmarks_color = get_color_for_completion(bookmarks_percentage)
-
-                if (likes_percentage >= 100 and retweets_percentage >= 100 and
-                        replies_percentage >= 100 and bookmarks_percentage >= 100):
-                    raid_duration = datetime.utcnow() - raid_start_time  # Calculate raid duration
-                    duration_str = format_duration(int(raid_duration.total_seconds()))  # Format the duration
-                    alert_message = (
-                        f"GJ BOYS WE FUCKED THAT RAID 🙏🙏\n\n"
-                        f"COMPLETED IN JUST {duration_str}!! 😈😈"
-                    )
-                    # Send the final raid completion message as a reply to the pinned message
+                # Check if the raid has exceeded the 1-hour time limit
+                if datetime.utcnow() - raid_start_time > timedelta(hours=1):
                     await bot.send_message(
                         chat_id=ongoing_raid['message'].chat.id,
-                        text=alert_message,
+                        text="Damn, we didn't smash that raid enough 😭😭",
                         parse_mode="Markdown",
-                        reply_to_message_id=ongoing_raid['pinned_message_id']  # Reply to the last pinned message
+                        reply_to_message_id=ongoing_raid['pinned_message_id']
                     )
-
                     await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
                     ongoing_raid = None
 
-                    if raid_queue:
+                    if queue_enabled and raid_queue:
                         next_raid = raid_queue.popleft()
                         stop_engagement_task = False  # Reset the flag for the next raid
                         raid_start_time = datetime.utcnow()  # Start tracking the time for the new raid
@@ -345,24 +440,74 @@ async def track_engagement():
                                                    message_id=pinned_message.message_id, disable_notification=True)
                         ongoing_raid['pinned_message_id'] = pinned_message.message_id
                 else:
-                    # Delete the previously pinned message before sending the next update
-                    if 'pinned_message_id' in ongoing_raid and ongoing_raid['pinned_message_id']:
-                        try:
-                            await bot.delete_message(chat_id=ongoing_raid['message'].chat.id,
-                                                     message_id=ongoing_raid['pinned_message_id'])
-                        except Exception as e:
-                            print(f"Error deleting pinned message: {str(e)}")
+                    # Determine the color for each metric
+                    likes_color = get_color_for_completion(likes_percentage)
+                    retweets_color = get_color_for_completion(retweets_percentage)
+                    replies_color = get_color_for_completion(replies_percentage)
+                    bookmarks_color = get_color_for_completion(bookmarks_percentage)
 
-                    # Send the updated raid status
-                    pinned_message = await send_full_raid_update(ongoing_raid['message'], ongoing_raid)
+                    if (likes_percentage >= 100 and retweets_percentage >= 100 and
+                            replies_percentage >= 100 and bookmarks_percentage >= 100):
+                        raid_duration = datetime.utcnow() - raid_start_time  # Calculate raid duration
+                        duration_str = format_duration(int(raid_duration.total_seconds()))  # Format the duration
+                        alert_message = (
+                            f"GJ BOYS WE FUCKED THAT RAID 🙏🙏\n\n"
+                            f"COMPLETED IN JUST {duration_str}!! 😈😈"
+                        )
+                        # Send the final raid completion message as a reply to the pinned message
+                        await bot.send_message(
+                            chat_id=ongoing_raid['message'].chat.id,
+                            text=alert_message,
+                            parse_mode="Markdown",
+                            reply_to_message_id=ongoing_raid['pinned_message_id']  # Reply to the last pinned message
+                        )
 
-                    # Pin the new message
-                    await bot.pin_chat_message(chat_id=ongoing_raid['message'].chat.id,
-                                               message_id=pinned_message.message_id,
-                                               disable_notification=True)
+                        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
+                        ongoing_raid = None
 
-                    # Store the ID of the current message to delete it later
-                    ongoing_raid['pinned_message_id'] = pinned_message.message_id
+                        if queue_enabled and raid_queue:
+                            next_raid = raid_queue.popleft()
+                            stop_engagement_task = False  # Reset the flag for the next raid
+                            raid_start_time = datetime.utcnow()  # Start tracking the time for the new raid
+                            ongoing_raid = {
+                                "post_link": next_raid['post_link'],
+                                "likes_goal": next_raid['likes_goal'],
+                                "retweets_goal": next_raid['retweets_goal'],
+                                "replies_goal": next_raid['replies_goal'],
+                                "bookmarks_goal": next_raid['bookmarks_goal'],
+                                "initial_likes": 0,
+                                "initial_retweets": 0,
+                                "initial_replies": 0,
+                                "initial_bookmarks": 0,
+                                "likes": 0,
+                                "retweets": 0,
+                                "replies": 0,
+                                "bookmarks": 0,
+                                "message": next_raid['message']  # Pass the correct message object
+                            }
+                            pinned_message = await send_full_raid_update(ongoing_raid['message'], ongoing_raid, initial=True)
+                            await bot.pin_chat_message(chat_id=ongoing_raid['message'].chat.id,
+                                                       message_id=pinned_message.message_id, disable_notification=True)
+                            ongoing_raid['pinned_message_id'] = pinned_message.message_id
+                    else:
+                        # Delete the previously pinned message before sending the next update
+                        if 'pinned_message_id' in ongoing_raid and ongoing_raid['pinned_message_id']:
+                            try:
+                                await bot.delete_message(chat_id=ongoing_raid['message'].chat.id,
+                                                         message_id=ongoing_raid['pinned_message_id'])
+                            except Exception as e:
+                                print(f"Error deleting pinned message: {str(e)}")
+
+                        # Send the updated raid status
+                        pinned_message = await send_full_raid_update(ongoing_raid['message'], ongoing_raid)
+
+                        # Pin the new message
+                        await bot.pin_chat_message(chat_id=ongoing_raid['message'].chat.id,
+                                                   message_id=pinned_message.message_id,
+                                                   disable_notification=True)
+
+                        # Store the ID of the current message to delete it later
+                        ongoing_raid['pinned_message_id'] = pinned_message.message_id
 
             except ServerDisconnectedError:
                 print("Server disconnected. Retrying...")
@@ -443,7 +588,6 @@ async def cleanup_tracking_messages(chat_id: int, delay: int):
             await bot.delete_message(chat_id, pinned_message.message_id)
     except Exception as e:
         print(f"Error during cleanup of tracking messages: {str(e)}")
-
 
 
 async def main():
