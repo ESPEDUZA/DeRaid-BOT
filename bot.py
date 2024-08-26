@@ -191,7 +191,7 @@ async def cancel_raid_handler(message: types.Message):
     if ongoing_raid:
         stop_engagement_task = True  # Signal to stop engagement tracking
         await bot.send_message(message.chat.id, "The current raid has been canceled.")
-        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
+        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=0)  # Set delay to 0 for instant cleanup
         ongoing_raid = None
 
         if queue_enabled and raid_queue:
@@ -219,14 +219,21 @@ async def cancel_raid_handler(message: types.Message):
                                        message_id=pinned_message.message_id, disable_notification=True)
             ongoing_raid['pinned_message_id'] = pinned_message.message_id
     else:
-        await bot.send_message(message.chat.id, "No ongoing raid to cancel.")
+        # Check if the message was queued and remove it
+        removed = False
+        for raid in raid_queue:
+            if raid['message'].message_id == message.message_id:
+                raid_queue.remove(raid)
+                removed = True
+                break
+
+        if removed:
+            await bot.send_message(message.chat.id, "The raid was in the queue and has been canceled.")
+        else:
+            await bot.send_message(message.chat.id, "No ongoing or queued raid to cancel.")
 
 
 @dp.message_handler(commands=['cancelall'])
-async def cancel_all_raids(message: types.Message):
-    await admin_only(message, cancel_all_raids_handler)
-
-
 async def cancel_all_raids_handler(message: types.Message):
     global ongoing_raid, stop_engagement_task, raid_queue
 
@@ -238,7 +245,8 @@ async def cancel_all_raids_handler(message: types.Message):
         ongoing_raid = None
 
     # Clear the queue
-    raid_queue.clear()
+    if raid_queue:
+        raid_queue.clear()
 
     await bot.send_message(message.chat.id, "The raid queue has been cleared.")
 
