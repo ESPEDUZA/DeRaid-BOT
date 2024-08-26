@@ -2,8 +2,6 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineQuery, InputTextMessageContent, InlineQueryResultArticle
-from aiogram.dispatcher.filters import CommandStart
-from aiogram.utils.exceptions import Unauthorized
 from collections import deque
 import tweepy
 from dotenv import load_dotenv

@@ -1,7 +1,4 @@
-aiogram==2.25
+aiogram==2.22.1
 tweepy==4.10.1
-urllib3==1.26.6
-aiohttp==3.8.0
 python-dotenv==1.0.0
-
-wheel
+aiohttp==3.8.5
