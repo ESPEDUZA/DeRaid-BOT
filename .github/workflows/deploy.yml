@@ -13,7 +13,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Heroku
+    - name: Set up Heroku CLI
       run: |
         curl https://cli-assets.heroku.com/install.sh | sh
 
@@ -26,4 +26,5 @@ jobs:
       run: |
         heroku git:remote --app $HEROKU_APP_NAME
         heroku config:set API_TOKEN=${{ secrets.API_TOKEN }} BEARER_TOKEN=${{ secrets.BEARER_TOKEN }} --app $HEROKU_APP_NAME
-        git push heroku main -f
+        git archive -o source.tar.gz HEAD  # Archive the current state of the repository
+        heroku builds:create -a $HEROKU_APP_NAME -t source.tar.gz  # Deploy using the tarball
