@@ -30,7 +30,7 @@ stop_engagement_task = False  # Flag to stop engagement tracking
 raid_start_time = None  # To track the start time of the raid
 queue_enabled = False  # Flag to enable/disable queue system
 
-BANNER_IMAGE_PATH = "2024-08-23 10.58.48.jpg"  # Update this with your actual image path or URL
+BANNER_IMAGE_PATH = "1Green.mp4"  # Update this with your actual image path or URL
 
 
 def get_color_for_completion(percentage):
