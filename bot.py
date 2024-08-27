@@ -28,7 +28,7 @@ stop_engagement_task = False  # Flag to stop engagement tracking
 raid_start_time = None  # To track the start time of the raid
 queue_enabled = False  # Flag to enable/disable queue system
 
-BANNER_IMAGE_PATH = "1Green.mp4"  # Update this with your actual image path or URL
+BANNER_IMAGE_PATH = "1Green.mp4"
 
 
 def get_color_for_completion(percentage):
@@ -563,8 +563,14 @@ async def send_full_raid_update(message: types.Message, raid_data, initial=False
         f"{raid_data['post_link']}"
     )
 
-    # Send the message with the banner
-    if BANNER_IMAGE_PATH.startswith("http://") or BANNER_IMAGE_PATH.startswith("https://"):
+    if BANNER_IMAGE_PATH.lower().endswith('.mp4'):
+        if os.path.exists(BANNER_IMAGE_PATH):
+            with open(BANNER_IMAGE_PATH, 'rb') as banner:
+                return await bot.send_video(chat_id=message.chat.id, video=banner, caption=interaction_text,
+                                            parse_mode="Markdown")
+        else:
+            return await bot.send_message(chat_id=message.chat.id, text=interaction_text, parse_mode="Markdown")
+    elif BANNER_IMAGE_PATH.startswith("http://") or BANNER_IMAGE_PATH.startswith("https://"):
         return await bot.send_photo(chat_id=message.chat.id, photo=BANNER_IMAGE_PATH, caption=interaction_text,
                                     parse_mode="Markdown")
     else:
