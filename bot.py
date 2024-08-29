@@ -412,7 +412,7 @@ async def track_engagement():
                         parse_mode="Markdown",
                         reply_to_message_id=ongoing_raid['pinned_message_id']
                     )
-                    await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
+                    await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=10)
                     ongoing_raid = None
 
                     if queue_enabled and raid_queue:
@@ -462,7 +462,7 @@ async def track_engagement():
                             reply_to_message_id=ongoing_raid['pinned_message_id']  # Reply to the last pinned message
                         )
 
-                        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=60)
+                        await cleanup_tracking_messages(ongoing_raid['message'].chat.id, delay=10)
                         ongoing_raid = None
 
                         if queue_enabled and raid_queue:
@@ -514,7 +514,7 @@ async def track_engagement():
             except Exception as e:
                 print(f"Unexpected error during tracking: {str(e)}")
 
-        await asyncio.sleep(65)  # Check every 65 seconds
+        await asyncio.sleep(15)  # Check every 15 seconds
 
 
 def extract_post_id(post_link):
