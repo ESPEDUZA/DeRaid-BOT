@@ -12,8 +12,7 @@ from datetime import datetime, timedelta
 
 # Load environment variables from .env file
 load_dotenv()
-#init staging
-#test2
+
 API_TOKEN = os.getenv('API_TOKEN')
 BEARER_TOKEN = os.getenv('BEARER_TOKEN')
 
@@ -30,7 +29,7 @@ stop_engagement_task = False  # Flag to stop engagement tracking
 raid_start_time = None  # To track the start time of the raid
 queue_enabled = False  # Flag to enable/disable queue system
 
-BANNER_IMAGE_PATH = "1Green.mp4"
+BANNER_IMAGE_PATH = "1Green_1.mp4"
 
 
 def get_color_for_completion(percentage):
